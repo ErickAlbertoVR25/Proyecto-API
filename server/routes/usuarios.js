@@ -5,52 +5,40 @@ const pool = require('../db');
 
 const router = express.Router();
 
-/**
- * Helper: maneja errores de express-validator
- */
 function handleValidation(req, res, next) {
   const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
-  }
+  if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
   next();
 }
 
-/**
- * GET /usuarios
- * Obtiene todos los usuarios (sin campos sensibles)
- */
+/* GET /usuarios - listar todos */
 router.get('/', async (req, res) => {
   try {
     const [rows] = await pool.query('SELECT id, nombre, apellido, correo, fecha_creacion FROM usuarios ORDER BY id DESC');
-    res.json(rows);
+    return res.json(rows);
   } catch (err) {
     console.error('GET /usuarios error:', err);
-    res.status(500).json({ error: 'Error al obtener usuarios' });
+    return res.status(500).json({ error: 'Error al obtener usuarios' });
   }
 });
 
-/**
- * GET /usuarios/:id
- */
+/* GET /usuarios/:id - detalle */
 router.get('/:id', [
-  param('id').isInt({ gt: 0 }).withMessage('id debe ser entero positivo'),
+  param('id').isInt({ gt: 0 }).withMessage('id inválido'),
   handleValidation
 ], async (req, res) => {
+  const id = Number(req.params.id);
   try {
-    const [rows] = await pool.query('SELECT id, nombre, apellido, correo, fecha_creacion FROM usuarios WHERE id = ?', [req.params.id]);
+    const [rows] = await pool.query('SELECT id, nombre, apellido, correo, fecha_creacion FROM usuarios WHERE id = ?', [id]);
     if (rows.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json(rows[0]);
+    return res.json(rows[0]);
   } catch (err) {
-    console.error('GET /usuarios/:id error:', err);
-    res.status(500).json({ error: 'Error al obtener usuario' });
+    console.error(`GET /usuarios/${id} error:`, err);
+    return res.status(500).json({ error: 'Error al obtener usuario' });
   }
 });
 
-/**
- * POST /usuarios
- * Crea un nuevo usuario
- */
+/* POST /usuarios - crear */
 router.post('/', [
   body('nombre').isString().trim().isLength({ min: 2 }).withMessage('nombre inválido'),
   body('apellido').isString().trim().isLength({ min: 2 }).withMessage('apellido inválido'),
@@ -63,20 +51,18 @@ router.post('/', [
       'INSERT INTO usuarios (nombre, apellido, correo) VALUES (?, ?, ?)',
       [nombre, apellido, correo]
     );
-    res.status(201).json({ id: result.insertId, nombre, apellido, correo });
+    // Devuelve el recurso creado
+    return res.status(201).json({ id: result.insertId, nombre, apellido, correo });
   } catch (err) {
     console.error('POST /usuarios error:', err);
-    if (err.code === 'ER_DUP_ENTRY') {
+    if (err && err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ error: 'El correo ya está registrado' });
     }
-    res.status(500).json({ error: 'Error al crear usuario' });
+    return res.status(500).json({ error: 'Error al crear usuario' });
   }
 });
 
-/**
- * PUT /usuarios/:id
- * Actualiza un usuario (requiere todos o algunos campos)
- */
+/* PUT /usuarios/:id - actualizar (parcial) */
 router.put('/:id', [
   param('id').isInt({ gt: 0 }).withMessage('id inválido'),
   body('nombre').optional().isString().trim().isLength({ min: 2 }),
@@ -84,15 +70,14 @@ router.put('/:id', [
   body('correo').optional().isEmail().normalizeEmail(),
   handleValidation
 ], async (req, res) => {
+  const id = Number(req.params.id);
   const { nombre, apellido, correo } = req.body;
-  const id = req.params.id;
 
-  // Construir consulta dinámica simple
   const fields = [];
   const values = [];
-  if (nombre) { fields.push('nombre = ?'); values.push(nombre); }
-  if (apellido) { fields.push('apellido = ?'); values.push(apellido); }
-  if (correo) { fields.push('correo = ?'); values.push(correo); }
+  if (nombre !== undefined) { fields.push('nombre = ?'); values.push(nombre); }
+  if (apellido !== undefined) { fields.push('apellido = ?'); values.push(apellido); }
+  if (correo !== undefined) { fields.push('correo = ?'); values.push(correo); }
 
   if (fields.length === 0) return res.status(400).json({ error: 'No hay campos para actualizar' });
 
@@ -102,30 +87,29 @@ router.put('/:id', [
   try {
     const [result] = await pool.query(sql, values);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json({ ok: true, id: Number(id) });
+    return res.json({ ok: true, id });
   } catch (err) {
-    console.error('PUT /usuarios/:id error:', err);
-    if (err.code === 'ER_DUP_ENTRY') {
+    console.error(`PUT /usuarios/${id} error:`, err);
+    if (err && err.code === 'ER_DUP_ENTRY') {
       return res.status(409).json({ error: 'El correo ya está registrado' });
     }
-    res.status(500).json({ error: 'Error al actualizar usuario' });
+    return res.status(500).json({ error: 'Error al actualizar usuario' });
   }
 });
 
-/**
- * DELETE /usuarios/:id
- */
+/* DELETE /usuarios/:id */
 router.delete('/:id', [
   param('id').isInt({ gt: 0 }).withMessage('id inválido'),
   handleValidation
 ], async (req, res) => {
+  const id = Number(req.params.id);
   try {
-    const [result] = await pool.query('DELETE FROM usuarios WHERE id = ?', [req.params.id]);
+    const [result] = await pool.query('DELETE FROM usuarios WHERE id = ?', [id]);
     if (result.affectedRows === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
-    console.error('DELETE /usuarios/:id error:', err);
-    res.status(500).json({ error: 'Error al eliminar usuario' });
+    console.error(`DELETE /usuarios/${id} error:`, err);
+    return res.status(500).json({ error: 'Error al eliminar usuario' });
   }
 });
 
