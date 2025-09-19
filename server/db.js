@@ -1,13 +1,16 @@
 // server/db.js
+// Crea y exporta un pool de conexiones mysql2/promise usando variables de entorno.
+// Soporta dos fuentes de configuración:
+//  - DATABASE_URL (cadena tipo mysql://user:pass@host:port/db)
+//  - o las variables separadas DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME
+
 const mysql = require('mysql2/promise');
 require('dotenv').config();
 
 /**
- * Construye la configuración de conexión a partir de:
- * 1) DATABASE_URL (si existe) -> mysql://user:pass@host:port/db
- * 2) variables separadas: DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME
- *
- * NOTA: Evita imprimir en logs credenciales en producción.
+ * parseDatabaseUrl
+ * Intenta parsear una DATABASE_URL y devolver un objeto con host, port, user, password, database.
+ * Si falla el parseo devuelve null y se usará el fallback por variables separadas.
  */
 function parseDatabaseUrl(dbUrl) {
   try {
@@ -20,13 +23,14 @@ function parseDatabaseUrl(dbUrl) {
       database: url.pathname ? url.pathname.replace(/^\//, '') : undefined
     };
   } catch (err) {
-    // si falla el parseo, devolvemos null para que se use el fallback
     return null;
   }
 }
 
+// Si la plataforma (o tú) entrega DATABASE_URL, la usamos con preferencia.
 const fromUrl = process.env.DATABASE_URL ? parseDatabaseUrl(process.env.DATABASE_URL) : null;
 
+// Configuración base: usar el parseo de URL o fallback a variables separadas
 const poolConfig = fromUrl || {
   host: process.env.DB_HOST || 'localhost',
   port: process.env.DB_PORT ? Number(process.env.DB_PORT) : 3306,
@@ -35,15 +39,16 @@ const poolConfig = fromUrl || {
   database: process.env.DB_NAME || 'proyecto_api'
 };
 
-// Opciones adicionales útiles para producción/desarrollo
+// Opciones adicionales para el pool (útiles en producción)
 Object.assign(poolConfig, {
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
-  // tiempo máximo para conectar en ms (evita que la app se quede colgada demasiado)
+  // Tiempo de conexión en ms para evitar bloqueos largos
   connectTimeout: 10000
 });
 
+// Crear el pool y exportarlo. El pool maneja conexiones y reintentos internos.
 const pool = mysql.createPool(poolConfig);
 
 module.exports = pool;
